@@ -24,7 +24,7 @@ from auth import verify_google_token
 HOST = os.getenv("HOST", "https://gemini-a2a-agent-581480210619.us-central1.run.app")
 PORT = int(os.getenv("PORT", 8000))
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "sn-63991000-aia-aif-7haf")
+GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "gen-lang-client-0080156436")
 VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
 
 GEMINI_URL = (
