@@ -21,24 +21,20 @@ from auth import verify_google_token
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
-HOST = os.getenv("HOST", "https://gemini-a2a-agent-581480210619.us-central1.run.app")
+HOST = os.getenv("HOST", "https://a2a-snow.onrender.com/")
 PORT = int(os.getenv("PORT", 8000))
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "gen-lang-client-0080156436")
-VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-GEMINI_URL = (
-    f"https://{VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/{GOOGLE_CLOUD_PROJECT}"
-    f"/locations/{VERTEX_LOCATION}/publishers/google/models/{GEMINI_MODEL}:generateContent"
-)
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY environment variable is required")
 
-# Stores the current request's Bearer token for use in the Gemini call
-_user_token: ContextVar[str] = ContextVar("user_token", default="")
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 # ── Gemini call ────────────────────────────────────────────────────────────────
 
 async def call_gemini(user_text: str, context_history: list = None) -> str:
-    """Call Gemini via Vertex AI using the user's OAuth token."""
+    """Call Gemini API using centralized API key."""
     contents = []
 
     if context_history:
@@ -49,14 +45,10 @@ async def call_gemini(user_text: str, context_history: list = None) -> str:
         "parts": [{"text": user_text}]
     })
 
-    token = _user_token.get()
-    if not token:
-        raise ValueError("No user token available")
-
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
-            GEMINI_URL,
-            headers={"Authorization": f"Bearer {token}"},
+            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
             json={"contents": contents},
         )
 
@@ -138,7 +130,7 @@ agent_card = AgentCard(
     description=(
         "A2A-compliant agent backed by Google Gemini. "
         "Supports multi-turn conversations. "
-        "Requires Google OAuth 2.0 Bearer token with cloud-platform scope."
+        "Requires Google OAuth 2.0 Bearer token for authentication."
     ),
     url=HOST,
     version="1.0.0",
@@ -146,7 +138,7 @@ agent_card = AgentCard(
     securitySchemes={
         "google_oauth2": {
             "type": "oauth2",
-            "description": "Google OAuth 2.0. Requires cloud-platform scope to call Vertex AI.",
+            "description": "Google OAuth 2.0 for authentication.",
             "flows": {
                 "authorizationCode": {
                     "authorizationUrl": "https://accounts.google.com/o/oauth2/auth",
@@ -154,8 +146,7 @@ agent_card = AgentCard(
                     "scopes": {
                         "openid": "OpenID Connect",
                         "email": "View your email address",
-                        "profile": "View your basic profile info",
-                        "https://www.googleapis.com/auth/cloud-platform": "Access Google Cloud services including Vertex AI"
+                        "profile": "View your basic profile info"
                     }
                 }
             }
@@ -164,8 +155,7 @@ agent_card = AgentCard(
     security=[{"google_oauth2": [
         "openid",
         "email",
-        "profile",
-        "https://www.googleapis.com/auth/cloud-platform"
+        "profile"
     ]}],
     skills=[
         AgentSkill(
@@ -206,12 +196,8 @@ async def get_agent_card():
     return JSONResponse(agent_card.model_dump(exclude_none=True))
 
 
-@app.post("/", dependencies=[Depends(verify_google_token)])  # Protected
+@app.post("/", dependencies=[Depends(verify_google_token)])  # Protected with OAuth
 async def a2a_endpoint(request: Request):
-    # Pass user's token through to Vertex AI call
-    token = request.headers.get("Authorization", "").removeprefix("Bearer ")
-    _user_token.set(token)
-
     for route in base_app.router.routes:
         if hasattr(route, "methods") and "POST" in (route.methods or set()):
             return await route.endpoint(request)
